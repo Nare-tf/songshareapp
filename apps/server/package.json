@@ -4,17 +4,16 @@
     "description": "Backend for Music Share Chat",
     "main": "index.js",
     "dependencies": {
+        "@supabase/supabase-js": "^2.91.0",
         "axios": "^1.6.2",
         "cors": "^2.8.5",
         "dotenv": "^16.3.1",
         "express": "^4.18.2",
         "socket.io": "^4.7.2",
-        "yt-search": "^2.13.1",
-        "@prisma/client": "5.19.1"
+        "yt-search": "^2.13.1"
     },
     "devDependencies": {
-        "nodemon": "^3.0.1",
-        "prisma": "5.19.1"
+        "nodemon": "^3.0.1"
     },
     "scripts": {
         "start": "node index.js",

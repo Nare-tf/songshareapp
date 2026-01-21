@@ -931,9 +931,19 @@ export default function RoomClient({ roomId }) {
                                 </div>
                             ) : (
                                 history.map((song, idx) => (
-                                    <div key={idx} className="bg-zinc-950/30 p-2 rounded flex gap-2 group relative opacity-75 hover:opacity-100 transition-opacity">
-                                        <img src={song.thumbnail} className="w-10 h-10 rounded object-cover grayscale hover:grayscale-0 transition-all" />
-                                        <div className="flex-1 min-w-0">
+                                    <div
+                                        key={idx}
+                                        className="bg-zinc-950/30 p-2 rounded flex gap-2 group relative opacity-75 hover:opacity-100 transition-opacity cursor-pointer hover:bg-zinc-900"
+                                        onClick={() => handleSync({
+                                            id: song.songId,
+                                            platform: song.platform,
+                                            title: song.title,
+                                            artist: song.artist,
+                                            thumbnail: song.thumbnail,
+                                        })}
+                                    >
+                                        <img src={song.thumbnail} className="w-10 h-10 rounded object-cover grayscale hover:grayscale-0 transition-all pointer-events-none" />
+                                        <div className="flex-1 min-w-0 pointer-events-none">
                                             <p className="text-sm font-medium truncate">{song.title}</p>
                                             <div className="flex justify-between items-center pr-2">
                                                 <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
@@ -941,8 +951,11 @@ export default function RoomClient({ roomId }) {
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => addToQueue(song)}
-                                            className="absolute top-1/2 -translate-y-1/2 right-2 opacity-0 group-hover:opacity-100 bg-blue-600 p-1.5 rounded-full text-white shadow-lg"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                addToQueue(song);
+                                            }}
+                                            className="absolute top-1/2 -translate-y-1/2 right-2 opacity-0 group-hover:opacity-100 bg-blue-600 p-1.5 rounded-full text-white shadow-lg z-10"
                                             title="Add back to queue"
                                         >
                                             <UserPlus className="w-3 h-3" />

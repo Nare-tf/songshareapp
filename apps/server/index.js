@@ -2,10 +2,9 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const axios = require('axios');
 require('dotenv').config();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION:', err);
@@ -59,7 +58,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 const logHistory = async (roomId, song) => {
     try {
-        const response = await axios.post(`${FRONTEND_URL}/api/history`, {
+        const { data: entry, error } = await supabase.from('PlayHistory').insert({
             roomId,
             songId: song.songId || song.id,
             platform: song.platform,
@@ -67,8 +66,10 @@ const logHistory = async (roomId, song) => {
             artist: song.artist,
             thumbnail: song.thumbnail,
             playedBy: song.user || song.addedBy || "Unknown"
-        });
-        return response.data;
+        }).select().single();
+
+        if (error) throw error;
+        return entry;
     } catch (err) {
         console.error("Failed to log history:", err.message);
         return null;
@@ -89,11 +90,14 @@ io.on('connection', (socket) => {
 
         // Load messages from DB if room is empty or just refresh cache
         try {
-            const dbMessages = await prisma.message.findMany({
-                where: { roomId },
-                orderBy: { timestamp: 'asc' },
-                take: 50
-            });
+            const { data: dbMessages, error } = await supabase
+                .from('Message')
+                .select('*')
+                .eq('roomId', roomId)
+                .order('timestamp', { ascending: true })
+                .limit(50);
+
+            if (error) throw error;
 
             if (dbMessages && dbMessages.length > 0) {
                 rooms[roomId].messages = dbMessages.map(m => ({
@@ -101,11 +105,11 @@ io.on('connection', (socket) => {
                     roomId: m.roomId,
                     user: m.userId,
                     text: m.text,
-                    timestamp: m.timestamp.toISOString(),
+                    timestamp: m.timestamp,
                     edited: m.edited,
                     reactions: m.reactions || {},
                     songCard: m.songCard || undefined,
-                    replyTo: m.replyToId ? { id: m.replyToId } : null // Simplified reply logic
+                    replyTo: m.replyToId ? { id: m.replyToId } : null
                 }));
             }
         } catch (e) {
@@ -126,20 +130,25 @@ io.on('connection', (socket) => {
 
         // Save to DB
         try {
-            const savedMsg = await prisma.message.create({
-                data: {
+            const { data: savedMsg, error } = await supabase
+                .from('Message')
+                .insert({
                     roomId: data.roomId,
                     userId: data.user,
                     text: data.text,
-                    timestamp: new Date(), // Set server time
+                    // timestamp: default to now
                     replyToId: data.replyTo ? data.replyTo.id : null,
-                    songCard: data.songCard || undefined,
+                    songCard: data.songCard || null,
                     reactions: {}
-                }
-            });
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
             // Update data with authoritative ID and timestamp
             data.id = savedMsg.id;
-            data.timestamp = savedMsg.timestamp.toISOString();
+            data.timestamp = savedMsg.timestamp;
             data.reactions = {};
         } catch (e) {
             console.error("Failed to save message:", e);
@@ -162,7 +171,8 @@ io.on('connection', (socket) => {
 
         // Update DB
         try {
-            const msg = await prisma.message.findUnique({ where: { id: messageId } });
+            const { data: msg, error } = await supabase.from('Message').select('reactions').eq('id', messageId).single();
+
             if (msg) {
                 let reactions = msg.reactions || {};
                 if (!reactions[emoji]) reactions[emoji] = [];
@@ -174,10 +184,7 @@ io.on('connection', (socket) => {
                     reactions[emoji].push(user);
                 }
 
-                await prisma.message.update({
-                    where: { id: messageId },
-                    data: { reactions }
-                });
+                await supabase.from('Message').update({ reactions }).eq('id', messageId);
             }
         } catch (e) {
             console.error("Reaction update failed:", e);
@@ -187,10 +194,7 @@ io.on('connection', (socket) => {
     socket.on('edit_message', async (data) => {
         io.to(data.roomId).emit('message_edited', data);
         try {
-            await prisma.message.update({
-                where: { id: data.messageId },
-                data: { text: data.newText, edited: true }
-            });
+            await supabase.from('Message').update({ text: data.newText, edited: true }).eq('id', data.messageId);
         } catch (e) {
             console.error("Edit update failed:", e);
         }

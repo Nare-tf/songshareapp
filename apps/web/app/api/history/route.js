@@ -1,8 +1,10 @@
-
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { createClient } from '@supabase/supabase-js';
 
-const prisma = new PrismaClient();
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export async function POST(req) {
     try {
@@ -15,8 +17,9 @@ export async function POST(req) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        const entry = await prisma.playHistory.create({
-            data: {
+        const { data: entry, error } = await supabase
+            .from('PlayHistory')
+            .insert({
                 roomId,
                 songId,
                 platform,
@@ -24,8 +27,11 @@ export async function POST(req) {
                 artist,
                 thumbnail,
                 playedBy
-            }
-        });
+            })
+            .select() // Return inserted data
+            .single();
+
+        if (error) throw error;
 
         return NextResponse.json(entry, { status: 201 });
     } catch (error) {
@@ -43,11 +49,14 @@ export async function GET(req) {
             return NextResponse.json({ error: "roomId is required" }, { status: 400 });
         }
 
-        const history = await prisma.playHistory.findMany({
-            where: { roomId },
-            orderBy: { playedAt: 'desc' },
-            take: 50
-        });
+        const { data: history, error } = await supabase
+            .from('PlayHistory')
+            .select('*')
+            .eq('roomId', roomId)
+            .order('playedAt', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
 
         return NextResponse.json(history);
     } catch (error) {
