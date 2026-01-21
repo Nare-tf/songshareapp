@@ -575,12 +575,52 @@ export default function RoomClient({ roomId }) {
         alert("Room link copied to clipboard!");
     };
 
+    // Dynamic origin for YouTube API
+    const [origin, setOrigin] = useState("");
+    useEffect(() => {
+        setOrigin(window.location.origin);
+    }, []);
+
     const iframeSrc = useMemo(() => {
         if (!currentSyncSong || currentSyncSong.platform !== 'youtube') return "";
-        // Hardcode origin for dev to ensure match
-        const origin = "http://localhost:3000";
+        if (!origin) return "";
+
+        // Initial load only. Subsequent updates handled via postMessage
+        // We add 'enablejsapi=1' to allow control
         return `https://www.youtube.com/embed/${currentSyncSong.songId}?enablejsapi=1&controls=0&autoplay=1&origin=${origin}&widget_referrer=${origin}&start=${Math.floor((Date.now() - currentSyncSong.startTime) / 1000)}`;
-    }, [currentSyncSong?.songId]); // Only update when song changes, not when seeking (startTime changes)
+    }, [currentSyncSong?.songId, origin]);
+
+    // Sync Effect: Handles Play/Pause/Seek updates WITHOUT reloading iframe
+    useEffect(() => {
+        if (!playerRef.current || !currentSyncSong || currentSyncSong.platform !== 'youtube') return;
+
+        const player = playerRef.current;
+
+        // Calculate where we should be
+        let targetTime = 0;
+        if (currentSyncSong.isPaused) {
+            targetTime = currentSyncSong.pausedPosition || 0;
+        } else {
+            targetTime = (Date.now() - currentSyncSong.startTime) / 1000;
+        }
+
+        // 1. Seek to target time (Ensures everyone is at the same second)
+        player.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'seekTo',
+            args: [targetTime, true]
+        }), '*');
+
+        // 2. Play or Pause
+        const command = currentSyncSong.isPaused ? "pauseVideo" : "playVideo";
+        player.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: command,
+            args: []
+        }), '*');
+
+    }, [currentSyncSong?.isPaused, currentSyncSong?.startTime, currentSyncSong?.pausedPosition]);
+
 
     const handleSelectSong = (track) => {
         setIsSearchOpen(false);
