@@ -1,8 +1,12 @@
-
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
-import prisma from "@/lib/prisma";
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export async function POST(req) {
     const session = await getServerSession(authOptions);
@@ -13,32 +17,28 @@ export async function POST(req) {
     try {
         const { songId, platform, title, artist, thumbnail } = await req.json();
 
-        // Find the user by email (from session)
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
+        // Get User ID from email (could optimize by putting ID in session)
+        const { data: user } = await supabase.from('User').select('id').eq('email', session.user.email).single();
 
-        if (!user) {
-            return NextResponse.json({ error: "User not found" }, { status: 404 });
-        }
+        if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-        const favorite = await prisma.favorite.create({
-            data: {
+        const { data: favorite, error } = await supabase
+            .from('Favorite')
+            .upsert({
                 userId: user.id,
                 songId,
                 platform,
                 title,
                 artist,
-                thumbnail,
-            },
-        });
+                thumbnail
+            }, { onConflict: 'userId, songId' })
+            .select()
+            .single();
+
+        if (error) throw error;
 
         return NextResponse.json(favorite);
     } catch (error) {
-        // Check for unique constraint violation (already favorited)
-        if (error.code === 'P2002') {
-            return NextResponse.json({ message: "Already favorited" }, { status: 200 });
-        }
         console.error("Error adding favorite:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -51,16 +51,19 @@ export async function GET(req) {
     }
 
     try {
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-            include: { favorites: true }
-        });
+        // Get User ID
+        const { data: user } = await supabase.from('User').select('id').eq('email', session.user.email).single();
+        if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-        if (!user) {
-            return NextResponse.json({ error: "User not found" }, { status: 404 });
-        }
+        const { data: favorites, error } = await supabase
+            .from('Favorite')
+            .select('*')
+            .eq('userId', user.id)
+            .order('createdAt', { ascending: false });
 
-        return NextResponse.json(user.favorites);
+        if (error) throw error;
+
+        return NextResponse.json(favorites);
     } catch (error) {
         console.error("Error fetching favorites:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -77,20 +80,16 @@ export async function DELETE(req) {
         const { searchParams } = new URL(req.url);
         const songId = searchParams.get("songId");
 
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
+        const { data: user } = await supabase.from('User').select('id').eq('email', session.user.email).single();
+        if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-        if (!user) {
-            return NextResponse.json({ error: "User not found" }, { status: 404 });
-        }
+        const { error } = await supabase
+            .from('Favorite')
+            .delete()
+            .eq('userId', user.id)
+            .eq('songId', songId);
 
-        await prisma.favorite.deleteMany({
-            where: {
-                userId: user.id,
-                songId: songId,
-            },
-        });
+        if (error) throw error;
 
         return NextResponse.json({ message: "Removed" });
     } catch (error) {
