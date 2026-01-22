@@ -94,8 +94,7 @@ io.on('connection', (socket) => {
                 .from('Message')
                 .select('*')
                 .eq('roomId', roomId)
-                .order('timestamp', { ascending: true })
-                .limit(50);
+                .order('timestamp', { ascending: true });
 
             if (error) throw error;
 
@@ -158,8 +157,8 @@ io.on('connection', (socket) => {
         if (rooms[data.roomId]) {
             if (!rooms[data.roomId].messages) rooms[data.roomId].messages = [];
             rooms[data.roomId].messages.push(data);
-            // Limit history to last 50 messages to save memory
-            if (rooms[data.roomId].messages.length > 50) rooms[data.roomId].messages.shift();
+            // Limit history to last 50 messages to save memory - Removed per request
+            // if (rooms[data.roomId].messages.length > 50) rooms[data.roomId].messages.shift();
         }
 
         io.to(data.roomId).emit('receive_message', data);
